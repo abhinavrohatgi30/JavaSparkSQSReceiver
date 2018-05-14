@@ -1,6 +1,7 @@
 package rohatgi.abhinav.spark.streaming.reciever;
 
 import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.regions.Regions;
@@ -19,7 +20,8 @@ public class JavaSQSReceiver extends Receiver<String> {
     AmazonSQSClientBuilder amazonSQSClientBuilder = AmazonSQSClientBuilder.standard().withRegion(Regions.DEFAULT_REGION);
     String queueName;
     Credentials credentials;
-    Regions region;
+    Regions region = Regions.DEFAULT_REGION;
+    Long timeout = 0L;
 
     public JavaSQSReceiver(String queueName) {
         super(StorageLevel.MEMORY_AND_DISK_2());
@@ -36,22 +38,22 @@ public class JavaSQSReceiver extends Receiver<String> {
     }
 
     private void receive(){
-        if(credentials!=null){
+        if(this.credentials!=null){
             this.amazonSQSClientBuilder =  AmazonSQSClientBuilder.standard().withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials(credentials.getAccessKey(),credentials.getSecretKey())));
         }
-        if(region!=null){
-            this.amazonSQSClientBuilder.withRegion(region);
-        }
+        this.amazonSQSClientBuilder.withRegion(this.region);
         final AmazonSQS amazonSQS = this.amazonSQSClientBuilder.build();
         final String sqsQueueUrl = amazonSQS.getQueueUrl(queueName).getQueueUrl();
         ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(sqsQueueUrl);
         try {
             while (!isStopped()) {
                 List<Message> messages = amazonSQS.receiveMessage(receiveMessageRequest).getMessages();
-                messages.stream().forEach( m -> {
+                messages.stream().forEach(m -> {
                     store(m.getBody());
                     amazonSQS.deleteMessage(new DeleteMessageRequest(sqsQueueUrl, m.getReceiptHandle()));
                 });
+                if (timeout>0L)
+                    Thread.sleep(timeout);
             }
             restart("Trying to connect again");
         }catch (IllegalArgumentException e){
@@ -61,6 +63,10 @@ public class JavaSQSReceiver extends Receiver<String> {
         }
     }
 
+    public JavaSQSReceiver withTimeout(Long timeoutInMillis) {
+        this.timeout = timeoutInMillis;
+        return this;
+    }
 
     public JavaSQSReceiver with(Regions region) {
         this.region = region;
@@ -72,8 +78,8 @@ public class JavaSQSReceiver extends Receiver<String> {
         return this;
     }
 
-    public  JavaSQSReceiver withCredentials(AWSStaticCredentialsProvider awsStaticCredentialsProvider){
-        AWSCredentials awsCredentials = awsStaticCredentialsProvider.getCredentials();
+    public  JavaSQSReceiver withCredentials(AWSCredentialsProvider awsCredentialsProvider){
+        AWSCredentials awsCredentials = awsCredentialsProvider.getCredentials();
         this.credentials = new Credentials(awsCredentials.getAWSAccessKeyId(),awsCredentials.getAWSSecretKey());
         return this;
     }
