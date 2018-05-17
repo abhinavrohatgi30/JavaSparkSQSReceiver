@@ -1,5 +1,6 @@
-package rohatgi.abhinav.spark.streaming.example;
+package com.github.abhinavrohatgi30.spark.streaming.example;
 
+import com.github.abhinavrohatgi30.spark.streaming.reciever.JavaSQSReceiver;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.streaming.Duration;
@@ -9,7 +10,6 @@ import org.apache.spark.streaming.api.java.JavaStreamingContext;
 
 import com.amazonaws.regions.Regions;
 
-import rohatgi.abhinav.spark.streaming.reciever.JavaSQSReceiver;
 import scala.Tuple2;
 
 public class SparkStreamingUsingSQSWithDeleteOnReceipt {

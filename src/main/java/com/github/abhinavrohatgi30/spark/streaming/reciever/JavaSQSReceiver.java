@@ -1,4 +1,4 @@
-package rohatgi.abhinav.spark.streaming.reciever;
+package com.github.abhinavrohatgi30.spark.streaming.reciever;
 
 import java.util.List;
 

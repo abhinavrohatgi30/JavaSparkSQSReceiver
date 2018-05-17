@@ -1,9 +1,10 @@
-package rohatgi.abhinav.spark.streaming.example;
+package com.github.abhinavrohatgi30.spark.streaming.example;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import com.github.abhinavrohatgi30.spark.streaming.reciever.JavaSQSReceiver;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.streaming.Duration;
@@ -18,7 +19,6 @@ import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.Message;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import rohatgi.abhinav.spark.streaming.reciever.JavaSQSReceiver;
 import scala.Tuple2;
 
 public class SparkStreamingUsingSQSWithoutDeleteOnReceipt {
