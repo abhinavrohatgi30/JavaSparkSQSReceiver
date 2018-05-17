@@ -1,6 +1,11 @@
 package rohatgi.abhinav.spark.streaming.reciever;
 
-import com.amazonaws.auth.AWSCredentials;
+import java.util.List;
+
+import org.apache.log4j.Logger;
+import org.apache.spark.storage.StorageLevel;
+import org.apache.spark.streaming.receiver.Receiver;
+
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
@@ -10,77 +15,95 @@ import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
-import org.apache.spark.storage.StorageLevel;
-import org.apache.spark.streaming.receiver.Receiver;
-
-import java.util.List;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class JavaSQSReceiver extends Receiver<String> {
 
-    AmazonSQSClientBuilder amazonSQSClientBuilder = AmazonSQSClientBuilder.standard().withRegion(Regions.DEFAULT_REGION);
-    String queueName;
-    Credentials credentials;
-    Regions region = Regions.DEFAULT_REGION;
-    Long timeout = 0L;
+	String queueName;
+	private transient AWSCredentialsProvider credentials;
+	Regions region = Regions.DEFAULT_REGION;
+	Long timeout = 0L;
+	ObjectMapper mapper;
+	private transient Logger logger;
+	boolean deleteOnReceipt;
+	
+	public JavaSQSReceiver(String queueName) {
+		this(queueName,true);
+	}
+	
+	public JavaSQSReceiver(String queueName,boolean deleteOnReceipt) {
+		super(StorageLevel.MEMORY_AND_DISK_2());
+		this.queueName = queueName;
+		this.mapper = new ObjectMapper();
+		this.logger = Logger.getLogger(JavaSQSReceiver.class);
+		this.deleteOnReceipt = deleteOnReceipt;
+	}
 
-    public JavaSQSReceiver(String queueName) {
-        super(StorageLevel.MEMORY_AND_DISK_2());
-        this.queueName = queueName;
-    }
+	public void onStart() {
+		new Thread(this::receive).start();
+	}
 
-    public void onStart() {
-        new Thread(this::receive).start();
-    }
+	public void onStop() {
+		// There is nothing much to do as the thread calling receive()
+		// is designed to stop by itself if isStopped() returns false
+	}
 
-    public void onStop() {
-        // There is nothing much to do as the thread calling receive()
-        // is designed to stop by itself if isStopped() returns false
-    }
+	private void receive() {
+		AmazonSQSClientBuilder amazonSQSClientBuilder = AmazonSQSClientBuilder.standard();
+		if (credentials != null) {
+			amazonSQSClientBuilder.withCredentials(credentials);
+		}
+		amazonSQSClientBuilder.withRegion(region);
+		final AmazonSQS amazonSQS = amazonSQSClientBuilder.build();
+		final String sqsQueueUrl = amazonSQS.getQueueUrl(queueName).getQueueUrl();
+		ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(sqsQueueUrl);
+		try {
+			while (!isStopped()) {
+				List<Message> messages = amazonSQS.receiveMessage(receiveMessageRequest).getMessages();
+				if(deleteOnReceipt){
+					String recieptHandle = messages.get(0).getReceiptHandle();
+					messages.stream().forEach(m -> store(m.getBody()));
+					amazonSQS.deleteMessage(new DeleteMessageRequest(sqsQueueUrl,recieptHandle));
+				}else{
+					messages.stream().forEach(this::storeMessage);	
+				}
+				if (timeout > 0L)
+					Thread.sleep(timeout);
+			}
+			restart("Trying to connect again");
+		} catch (IllegalArgumentException e) {
+			restart("Could not connect", e);
+		} catch (Throwable t) {
+			restart("Error receiving data", t);
+		}
+	}
 
-    private void receive(){
-        if(this.credentials!=null){
-            this.amazonSQSClientBuilder =  AmazonSQSClientBuilder.standard().withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials(credentials.getAccessKey(),credentials.getSecretKey())));
-        }
-        this.amazonSQSClientBuilder.withRegion(this.region);
-        final AmazonSQS amazonSQS = this.amazonSQSClientBuilder.build();
-        final String sqsQueueUrl = amazonSQS.getQueueUrl(queueName).getQueueUrl();
-        ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(sqsQueueUrl);
-        try {
-            while (!isStopped()) {
-                List<Message> messages = amazonSQS.receiveMessage(receiveMessageRequest).getMessages();
-                messages.stream().forEach(m -> {
-                    store(m.getBody());
-                    amazonSQS.deleteMessage(new DeleteMessageRequest(sqsQueueUrl, m.getReceiptHandle()));
-                });
-                if (timeout>0L)
-                    Thread.sleep(timeout);
-            }
-            restart("Trying to connect again");
-        }catch (IllegalArgumentException e){
-            restart("Could not connect", e);
-        }catch(Throwable t) {
-            restart("Error receiving data", t);
-        }
-    }
+	private void storeMessage(Message m) {
+		try {
+			store(mapper.writeValueAsString(m));
+		} catch (JsonProcessingException e) {
+			logger.error("Unable to write message to streaming context");
+		}
+	}
 
-    public JavaSQSReceiver withTimeout(Long timeoutInMillis) {
-        this.timeout = timeoutInMillis;
-        return this;
-    }
+	public JavaSQSReceiver withTimeout(Long timeoutInMillis) {
+		this.timeout = timeoutInMillis;
+		return this;
+	}
 
-    public JavaSQSReceiver with(Regions region) {
-        this.region = region;
-        return this;
-    }
+	public JavaSQSReceiver with(Regions region) {
+		this.region = region;
+		return this;
+	}
 
-    public JavaSQSReceiver withCredentials(String accessKeyId, String secretAccessKey){
-        this.credentials = new Credentials(accessKeyId,secretAccessKey);
-        return this;
-    }
+	public JavaSQSReceiver withCredentials(String accessKeyId, String secretAccessKey) {
+		this.credentials = new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKeyId, secretAccessKey));
+		return this;
+	}
 
-    public  JavaSQSReceiver withCredentials(AWSCredentialsProvider awsCredentialsProvider){
-        AWSCredentials awsCredentials = awsCredentialsProvider.getCredentials();
-        this.credentials = new Credentials(awsCredentials.getAWSAccessKeyId(),awsCredentials.getAWSSecretKey());
-        return this;
-    }
+	public JavaSQSReceiver withCredentials(AWSCredentialsProvider awsCredentialsProvider) {
+		this.credentials = awsCredentialsProvider;
+		return this;
+	}
 }
