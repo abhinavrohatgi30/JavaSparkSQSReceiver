@@ -1,4 +1,4 @@
-package com.github.abhinavrohatgi30.spark.streaming.reciever;
+package com.github.abhinavrohatgi30.spark.streaming.receiver;
 
 import java.util.List;
 

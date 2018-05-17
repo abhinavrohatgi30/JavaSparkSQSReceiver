@@ -1,6 +1,6 @@
 package com.github.abhinavrohatgi30.spark.streaming.example;
 
-import com.github.abhinavrohatgi30.spark.streaming.reciever.JavaSQSReceiver;
+import com.github.abhinavrohatgi30.spark.streaming.receiver.JavaSQSReceiver;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.streaming.Duration;

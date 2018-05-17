@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import com.github.abhinavrohatgi30.spark.streaming.reciever.JavaSQSReceiver;
+import com.github.abhinavrohatgi30.spark.streaming.receiver.JavaSQSReceiver;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.streaming.Duration;
