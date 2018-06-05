@@ -50,32 +50,41 @@ public class JavaSQSReceiver extends Receiver<String> {
 	}
 
 	private void receive() {
-		AmazonSQSClientBuilder amazonSQSClientBuilder = AmazonSQSClientBuilder.standard();
-		if (credentials != null) {
-			amazonSQSClientBuilder.withCredentials(credentials);
+		try {
+			AmazonSQSClientBuilder amazonSQSClientBuilder = AmazonSQSClientBuilder.standard();
+			if (credentials != null) {
+				amazonSQSClientBuilder.withCredentials(credentials);
+			}
+			amazonSQSClientBuilder.withRegion(region);
+			final AmazonSQS amazonSQS = amazonSQSClientBuilder.build();
+			final String sqsQueueUrl = amazonSQS.getQueueUrl(queueName).getQueueUrl();
+			ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(sqsQueueUrl);
+			recieveMessagesFromSQS(amazonSQS, sqsQueueUrl, receiveMessageRequest);
+		} catch (Throwable e) {
+			stop("Error encountered while initializing", e);
 		}
-		amazonSQSClientBuilder.withRegion(region);
-		final AmazonSQS amazonSQS = amazonSQSClientBuilder.build();
-		final String sqsQueueUrl = amazonSQS.getQueueUrl(queueName).getQueueUrl();
-		ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(sqsQueueUrl);
+	}
+
+	private void recieveMessagesFromSQS(final AmazonSQS amazonSQS, final String sqsQueueUrl,
+			ReceiveMessageRequest receiveMessageRequest) {
 		try {
 			while (!isStopped()) {
 				List<Message> messages = amazonSQS.receiveMessage(receiveMessageRequest).getMessages();
-				if(deleteOnReceipt){
+				if (deleteOnReceipt) {
 					String recieptHandle = messages.get(0).getReceiptHandle();
 					messages.stream().forEach(m -> store(m.getBody()));
-					amazonSQS.deleteMessage(new DeleteMessageRequest(sqsQueueUrl,recieptHandle));
-				}else{
-					messages.stream().forEach(this::storeMessage);	
+					amazonSQS.deleteMessage(new DeleteMessageRequest(sqsQueueUrl, recieptHandle));
+				} else {
+					messages.stream().forEach(this::storeMessage);
 				}
 				if (timeout > 0L)
 					Thread.sleep(timeout);
 			}
 			restart("Trying to connect again");
-		} catch (IllegalArgumentException e) {
+		} catch (IllegalArgumentException | InterruptedException e) {
 			restart("Could not connect", e);
-		} catch (Throwable t) {
-			restart("Error receiving data", t);
+		} catch (Throwable e) {
+			restart("Error Recieving Data", e);
 		}
 	}
 
